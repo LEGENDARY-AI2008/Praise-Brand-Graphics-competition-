@@ -130,13 +130,14 @@ body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-he
 var FC={apiKey:"AIzaSyB1J0DryWqSAijGDk2j_BOCrMzDi-AYv2o",authDomain:"legendary-ai-2e1d2.firebaseapp.com",projectId:"legendary-ai-2e1d2",storageBucket:"legendary-ai-2e1d2.firebasestorage.app",messagingSenderId:"454954996410",appId:"1:454954996410:web:9bd97fc89e489fdc156883"};
 var EK="lKd1SGlZodJLsjvyu",ES="service_8cgfr4n",ET="template_nx0320x",AE="ayantundepraise77@gmail.com";
 var ADMIN_PASS="PBG@Admin2024",CONTACT="09056760155";
+var CLOUD_NAME="dyev9iwm0",CLOUD_PRESET="legendary_ai";
 var db,storage,SF=null,ready=false;
 
 function waitForLibs(){
   if(typeof firebase==="undefined"||typeof emailjs==="undefined"){setTimeout(waitForLibs,100);return;}
   try{
     firebase.initializeApp(FC);
-    db=firebase.firestore();storage=firebase.storage();
+    db=firebase.firestore();
     emailjs.init(EK);
     firebase.auth().signInAnonymously().then(function(){ready=true;}).catch(function(e){console.error("auth:",e);ready=true;});
   }catch(e){console.error(e);}
@@ -184,41 +185,54 @@ function doSub(){
   var btn=document.getElementById("submitBtn");
   btn.disabled=true;btn.textContent="SUBMITTING...";
 
-  function proceed(){
-    var sRef=storage.ref("submissions/"+Date.now()+"_"+SF.name);
-    var task=sRef.put(SF);
-    document.getElementById("upwrap").style.display="block";
-    task.on("state_changed",
-      function(sn){var pct=Math.round(sn.bytesTransferred/sn.totalBytes*100);document.getElementById("upct").textContent=pct;document.getElementById("upbar").style.width=pct+"%";},
-      function(er){err.textContent="Upload error: "+er.message;btn.disabled=false;btn.textContent="SUBMIT MY DESIGN";document.getElementById("upwrap").style.display="none";},
-      function(){
-        sRef.getDownloadURL().then(function(url){
-          var d={name:name,age:age,phone:phone,country:country,email:email,social:social,portfolio:portfolio,title:title,desc:desc,fileURL:url,submittedAt:new Date().toLocaleString(),createdAt:firebase.firestore.FieldValue.serverTimestamp()};
-          db.collection("submissions").add(d).then(function(){
-            var msg=buildMsg(d);
-            emailjs.send(ES,ET,{to_email:AE,subject:"New Design Submission - "+title,message:msg}).then(function(){
-              console.log("Email sent OK");
-            }).catch(function(emErr){
-              console.error("Email error:",emErr);
-              alert("Saved OK, but email failed: "+JSON.stringify(emErr));
-            });
-            btn.disabled=false;btn.textContent="SUBMIT MY DESIGN";
-            go("success");
-          }).catch(function(e){err.textContent="Save error: "+e.message;btn.disabled=false;btn.textContent="SUBMIT MY DESIGN";});
-        });
-      }
-    );
-  }
+  document.getElementById("upwrap").style.display="block";
+  document.getElementById("upbar").style.width="10%";
+  document.getElementById("upct").textContent="...";
 
-  if(ready){proceed();}
-  else{
-    var tries=0;
-    var iv=setInterval(function(){
-      tries++;
-      if(ready){clearInterval(iv);proceed();}
-      else if(tries>50){clearInterval(iv);err.textContent="Connection error. Please refresh and try again.";btn.disabled=false;btn.textContent="SUBMIT MY DESIGN";}
-    },100);
-  }
+  var stuckTimer=setTimeout(function(){
+    err.textContent="Upload taking too long. Check your internet and try again, or contact admin: "+CONTACT;
+    btn.disabled=false;btn.textContent="SUBMIT MY DESIGN";
+  },30000);
+
+  var fd=new FormData();
+  fd.append("file",SF);
+  fd.append("upload_preset",CLOUD_PRESET);
+
+  var xhr=new XMLHttpRequest();
+  xhr.open("POST","https://api.cloudinary.com/v1_1/"+CLOUD_NAME+"/auto/upload",true);
+  xhr.upload.onprogress=function(ev){
+    if(ev.lengthComputable){
+      var pct=Math.round(ev.loaded/ev.total*100);
+      document.getElementById("upct").textContent=pct;
+      document.getElementById("upbar").style.width=pct+"%";
+    }
+  };
+  xhr.onreadystatechange=function(){
+    if(xhr.readyState===4){
+      clearTimeout(stuckTimer);
+      if(xhr.status>=200&&xhr.status<300){
+        var resp=JSON.parse(xhr.responseText);
+        var url=resp.secure_url;
+        var d={name:name,age:age,phone:phone,country:country,email:email,social:social,portfolio:portfolio,title:title,desc:desc,fileURL:url,submittedAt:new Date().toLocaleString(),createdAt:firebase.firestore.FieldValue.serverTimestamp()};
+        db.collection("submissions").add(d).then(function(){
+          var msg=buildMsg(d);
+          emailjs.send(ES,ET,{to_email:AE,subject:"New Design Submission - "+title,message:msg}).then(function(){
+            console.log("Email sent OK");
+          }).catch(function(emErr){
+            console.error("Email error:",emErr);
+            alert("Saved OK, but email failed: "+JSON.stringify(emErr));
+          });
+          btn.disabled=false;btn.textContent="SUBMIT MY DESIGN";
+          go("success");
+        }).catch(function(e){err.textContent="Save error: "+e.message;btn.disabled=false;btn.textContent="SUBMIT MY DESIGN";});
+      } else {
+        err.textContent="Upload failed ("+xhr.status+"): "+xhr.responseText;
+        btn.disabled=false;btn.textContent="SUBMIT MY DESIGN";
+        document.getElementById("upwrap").style.display="none";
+      }
+    }
+  };
+  xhr.send(fd);
 }
 
 function resetForm(){
